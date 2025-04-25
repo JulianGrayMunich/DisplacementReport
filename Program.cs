@@ -161,7 +161,7 @@ namespace DisplacementReport
 
             //==== Set the EPPlus license
             //ExcelPackage.LicenseContext = LicenseContext.Commercial;
-            ExcelPackage.License.SetCommercial("GLKaX6q87MCqgpnTW0VeLWonJZxxBWhrLGUYIwYIap3sQwUClECEr+MXsiCn7xi5EIukcnvQCBgecfAJtn3xGgEGQzVDRjMz5wdPACsDAQEA");  //Sets your license key in code.
+            ExcelPackage.License.SetCommercial("14XO1NhmOmVcqDWhA0elxM72um6vnYOS8UiExVFROZuRPn1Ddv5fRV8fiCPcjujkdw9H18nExINNFc8nmOjRIQEGQzVDRjMz5wdPAJkEAQEA");  //valid to 23.03.2026
 
 
             //==== Validate the DSPRPT license
@@ -169,7 +169,7 @@ namespace DisplacementReport
 
 
             // Welcome message
-            gnaT.WelcomeMessage("DisplacementReport 20250411");
+            gnaT.WelcomeMessage("DisplacementReport 20250425");
 
 
             string strFreezeScreen = ConfigurationManager.AppSettings["freezeScreen"];
