@@ -1,13 +1,13 @@
 ﻿using System.Configuration;
 using databaseAPI;
 using EASendMail;
-using GNAchartingtools;
 using GNAgeneraltools;
 using GNAspreadsheettools;
 using GNAsurveytools;
 using gnaDataClasses;
 using OfficeOpenXml;
 using GNA_CommercialLicenseValidator;
+using GNAchartingtools;
 
 namespace DisplacementReport
 {
@@ -39,16 +39,16 @@ namespace DisplacementReport
             GNAsurveycalcs gnaSurvey = new();
             dbAPI gnaDBAPI = new();
             spreadsheetAPI gnaSpreadsheetAPI = new();
-            GNAchartingAPI chartingAPI = new();
             gnaDataClass gnaDC = new();
-
+            GNAchartingAPI chartingAPI = new();
 
             //================[Console settings]======================================
             Console.OutputEncoding = System.Text.Encoding.Unicode;
 
             //================[Configuration variables]==================================================================
 
-            string strDBconnection = System.Configuration.ConfigurationManager.ConnectionStrings["DBconnectionString"].ConnectionString;
+
+            string strDBconnection = ConfigurationManager.ConnectionStrings["DBconnectionString"].ConnectionString;
 
             var config = ConfigurationManager.AppSettings;
             string strProjectTitle = config["ProjectTitle"];
@@ -102,11 +102,32 @@ namespace DisplacementReport
             string strNoOfEpochsHistoricData = config["NoOfEpochsHistoricData"];
 
             // Allocate recipient numbers
-            var smsMobile = new string[9];
-            for (int i = 0; i < smsMobile.Length; i++)
+
+
+            #region SMS numbers
+
+            List<string> smsMobile = new();
+            string strMobileList = "";
+            var allKeys = config.AllKeys;
+            var recipientKeys = allKeys.Where(k => k != null && k.StartsWith("RecipientPhone"));
+
+            foreach (string key1 in recipientKeys)
             {
-                smsMobile[i] = config[$"RecipientPhone{i + 1}"] ?? string.Empty;
+                string value = config[key1];
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    smsMobile.Add(value);
+                    if (strMobileList != "") strMobileList += ",";
+                    strMobileList += value;
+                }
             }
+            //Console.WriteLine(strTab1 + "Mobile list: " + strMobileList);
+            //Console.ReadKey();
+            #endregion
+
+
+
+
 
             string strJAGstatus = config["JAGstatus"];
             string strSMStitle = config["SMSTitle"];
@@ -117,6 +138,11 @@ namespace DisplacementReport
             string strEmailPassword = config["EmailPassword"];
             string strEmailFrom = config["EmailFrom"];
             string strEmailRecipients = config["EmailRecipients"];
+
+
+            var emailTransmissionDays = config["emailTransmission"];
+            var validDays = gnaT.ParseEmailTransmissionDays(emailTransmissionDays);
+            bool shouldSend = gnaT.emailTransmission(validDays);
 
             //================[Declare variables]===========================================================================
 
@@ -157,10 +183,17 @@ namespace DisplacementReport
             string strTab1 = "     ";
             string strTab2 = "        ";
 
+
+
+
+
+
+
+
+
             //================[Main program]===========================================================================
 
             //==== Set the EPPlus license
-            //ExcelPackage.LicenseContext = LicenseContext.Commercial;
             ExcelPackage.License.SetCommercial("14XO1NhmOmVcqDWhA0elxM72um6vnYOS8UiExVFROZuRPn1Ddv5fRV8fiCPcjujkdw9H18nExINNFc8nmOjRIQEGQzVDRjMz5wdPAJkEAQEA");  //valid to 23.03.2026
 
 
@@ -169,7 +202,7 @@ namespace DisplacementReport
 
 
             // Welcome message
-            gnaT.WelcomeMessage("DisplacementReport 20250425");
+            gnaT.WelcomeMessage("DisplacementReport 20250624");
 
 
             string strFreezeScreen = ConfigurationManager.AppSettings["freezeScreen"];
@@ -184,7 +217,7 @@ namespace DisplacementReport
             if (strFreezeScreen == "Yes")
             {
                 Console.WriteLine(strTab1 + "Check database connection");
-                // gnaDBAPI.testDBconnection(strDBconnection);
+                gnaDBAPI.testDBconnection(strDBconnection);
                 Console.WriteLine(strTab1 + "Check Existance of workbook & worksheets");
                 gnaSpreadsheetAPI.checkWorksheetExists(strMasterWorkbookFullPath, strReferenceWorksheet);
                 gnaSpreadsheetAPI.checkWorksheetExists(strMasterWorkbookFullPath, strSurveyWorksheet);
@@ -357,9 +390,6 @@ namespace DisplacementReport
 
                 Console.WriteLine(strTab1 + "Check for gross errors");
 
-
-
-
                 strMessage = gnaSpreadsheetAPI.grossAlarmCheck(strMasterWorkbookFullPath, strReferenceWorksheet, iFirstDataRow, dblDataJumpTriggerLevel);
 
                 if ((strMessage != "OK") && (strCheckForOutliers == "Yes"))
@@ -521,54 +551,63 @@ namespace DisplacementReport
             }
 
             Console.WriteLine("10. Email the workbook");
-            if (strSendEmails == "Yes")
+            if (shouldSend)
             {
-                try
+                Console.WriteLine(strTab1 + "Today is a valid day to send emails.");
+
+                if (strSendEmails == "Yes")
                 {
-                    strMessage = "This is an automated displacement report issued by the monitoring system. Please review and forward to the client. Please do not reply to this email.";
-                    strMessage = gnaT.addCopyright("DsplRpt", strMessage);
-                    string license = gnaT.commercialSoftwareLicense("email");
-
-                    SmtpMail oMail = new(license)
+                    try
                     {
-                        From = strEmailFrom,
-                        To = new AddressCollection(strEmailRecipients),
-                        Subject = "Displacement report: " + strProjectTitle + " (" + strDateTime + ")",
-                        TextBody = strMessage
-                    };
+                        strMessage = "This is an automated displacement report issued by the monitoring system. Please review and forward to the client. Please do not reply to this email.";
+                        strMessage = gnaT.addCopyright("DsplRpt", strMessage);
+                        string license = gnaT.commercialSoftwareLicense("email");
 
-                    // SMTP server address
-                    SmtpServer oServer = new("smtp.gmail.com")
+                        SmtpMail oMail = new(license)
+                        {
+                            From = strEmailFrom,
+                            To = new AddressCollection(strEmailRecipients),
+                            Subject = "Displacement report: " + strProjectTitle + " (" + strDateTime + ")",
+                            TextBody = strMessage
+                        };
+
+                        // SMTP server address
+                        SmtpServer oServer = new("smtp.gmail.com")
+                        {
+                            User = strEmailLogin,
+                            Password = strEmailPassword,
+                            ConnectType = SmtpConnectType.ConnectTryTLS,
+                            Port = 587
+                        };
+
+
+                        oMail.AddAttachment(strExportFile);
+                        SmtpClient oSmtp = new();
+                        oSmtp.SendMail(oServer, oMail);
+
+                        strMessage = "Displacement report: " + strProjectTitle + " (emailed)";
+
+                        gnaT.updateSystemLogFile(strRootFolder, strMessage);
+                        gnaT.updateReportTime("DSPRPT");
+                        Console.WriteLine(strTab1 + "email sent & logs updated");
+                    }
+                    catch (Exception ep)
                     {
-                        User = strEmailLogin,
-                        Password = strEmailPassword,
-                        ConnectType = SmtpConnectType.ConnectTryTLS,
-                        Port = 587
-                    };
-
-
-                    oMail.AddAttachment(strExportFile);
-                    SmtpClient oSmtp = new();
-                    oSmtp.SendMail(oServer, oMail);
-
-                    strMessage = "Displacement report: " + strProjectTitle + " (emailed)";
-
-                    gnaT.updateSystemLogFile(strRootFolder, strMessage);
-                    gnaT.updateReportTime("DSPRPT");
-                    Console.WriteLine(strTab1 + "email sent & logs updated");
+                        Console.WriteLine(strTab1 + "\nFailed to send email with the following error:");
+                        Console.WriteLine(strEmailLogin);
+                        Console.WriteLine(strEmailPassword);
+                        Console.WriteLine(ep.Message);
+                        //Console.ReadKey();
+                    }
                 }
-                catch (Exception ep)
+                else
                 {
-                    Console.WriteLine(strTab1 + "\nFailed to send email with the following error:");
-                    Console.WriteLine(strEmailLogin);
-                    Console.WriteLine(strEmailPassword);
-                    Console.WriteLine(ep.Message);
-                    //Console.ReadKey();
+                    Console.WriteLine(strTab1 + "No email sent");
                 }
             }
             else
             {
-                Console.WriteLine(strTab1 + "No email sent");
+                Console.WriteLine(strTab1 + "No email should be sent today.");
             }
 
 ThatsAllFolks:
