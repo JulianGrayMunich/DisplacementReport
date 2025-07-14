@@ -8,6 +8,7 @@ using gnaDataClasses;
 using OfficeOpenXml;
 using GNA_CommercialLicenseValidator;
 using GNAchartingtools;
+using System.IO;
 
 namespace DisplacementReport
 {
@@ -51,6 +52,16 @@ namespace DisplacementReport
             string strDBconnection = ConfigurationManager.ConnectionStrings["DBconnectionString"].ConnectionString;
 
             var config = ConfigurationManager.AppSettings;
+
+
+            #region Yes/No settings
+            string strFreezeScreen = ConfigurationManager.AppSettings["freezeScreen"];
+            string strComputedRdT = config["computedRdT"];
+            string strSendEmails = config["SendEmails"];
+            string strdiscreteTriggerColors = config["discreteTriggerColors"];
+
+            #endregion
+
             string strProjectTitle = config["ProjectTitle"];
             string strContractTitle = config["ContractTitle"];
             string strReportType = config["ReportType"];
@@ -78,7 +89,7 @@ namespace DisplacementReport
             string strChartsWorksheet_dT = config["ChartsWorksheet_dT"];
             string strChartsWorksheet_dH = config["ChartsWorksheet_dH"];
 
-            string strComputedRdT = config["computedRdT"];
+            
 
 
             string strFirstDataRow = config["FirstDataRow"];
@@ -133,7 +144,7 @@ namespace DisplacementReport
             string strSMStitle = config["SMSTitle"];
             string strMessage = "";
 
-            string strSendEmails = config["SendEmails"];
+            
             string strEmailLogin = config["EmailLogin"];
             string strEmailPassword = config["EmailPassword"];
             string strEmailFrom = config["EmailFrom"];
@@ -182,14 +193,7 @@ namespace DisplacementReport
 
             string strTab1 = "     ";
             string strTab2 = "        ";
-
-
-
-
-
-
-
-
+            string strTab3 = "           ";
 
             //================[Main program]===========================================================================
 
@@ -202,10 +206,7 @@ namespace DisplacementReport
 
 
             // Welcome message
-            gnaT.WelcomeMessage("DisplacementReport 20250624");
-
-
-            string strFreezeScreen = ConfigurationManager.AppSettings["freezeScreen"];
+            gnaT.WelcomeMessage("DisplacementReport 20250714");
 
             //====  Environment check
 
@@ -298,9 +299,6 @@ namespace DisplacementReport
                     break;
             }
 
-
-
-
             //==== Process data ===================================================================================
             Console.WriteLine("2. Extract point names");
             string[] strPointNames = gnaSpreadsheetAPI.readPointNames(strMasterWorkbookFullPath, strSurveyWorksheet, strFirstDataRow);
@@ -351,7 +349,7 @@ namespace DisplacementReport
                 strExportFile = strExcelPath + strContractTitle + "_" + strReportType + "_" + strReportTime + ".xlsx";
 
                 strTimeStamp = strTimeBlockEndLocal + "\n(local)";
-                Console.WriteLine(strTab2 + strTimeBlockStartLocal + " (local)");
+                Console.WriteLine("\n"+strTab2 + strTimeBlockStartLocal + " (local)");
                 Console.WriteLine(strTab2 + strTimeBlockEndLocal + " (local)\n");
 
 
@@ -417,16 +415,16 @@ namespace DisplacementReport
                     Console.WriteLine(strTab1 + "No outlier checking");
                 }
 
-                Console.WriteLine(strTab1 + "Calibration data");
-                {
-                    string strDistanceColumn = "3";
-                    strTimeBlockStartUTC = strTimeBlockStartUTC.Replace("'", "").Trim();
-                    strTimeBlockEndUTC = strTimeBlockEndUTC.Replace("'", "").Trim();
-                    gnaSpreadsheetAPI.populateCalibrationWorksheet(
-                        strDBconnection, strTimeBlockStartUTC, strTimeBlockEndUTC, strMasterWorkbookFullPath,
-                        strCalibrationWorksheet, strFirstOutputRow, strDistanceColumn, strProjectTitle
-                    );
-                }
+                //Console.WriteLine(strTab1 + "Calibration data");
+                //{
+                //    string strDistanceColumn = "3";
+                //    strTimeBlockStartUTC = strTimeBlockStartUTC.Replace("'", "").Trim();
+                //    strTimeBlockEndUTC = strTimeBlockEndUTC.Replace("'", "").Trim();
+                //    gnaSpreadsheetAPI.populateCalibrationWorksheet(
+                //        strDBconnection, strTimeBlockStartUTC, strTimeBlockEndUTC, strMasterWorkbookFullPath,
+                //        strCalibrationWorksheet, strFirstOutputRow, strDistanceColumn, strProjectTitle
+                //    );
+                //}
 
                 // Here the prism data is obtained from the reference worksheet. The only time the reference worksheet is touched.
                 Console.WriteLine(strTab1 + "Compute dS, dR & dT");
@@ -461,9 +459,11 @@ namespace DisplacementReport
                     Console.WriteLine(strTab2 + "No columns to be deleted");
                 }
 
+                // Note that this does not copy values across to the historic worksheets.
+                // It just applies stepwise formatting
+                // CopyColumnRange copies the numeric values. Seems weird to do it this way, but it works.
 
                 Console.WriteLine(strTab1 + "Write to " + strCurrentDisplacementWorksheet);
-                //Console.WriteLine(strTab1+"Write to worksheets");
                 gnaSpreadsheetAPI.writedSdRdTtoWorksheets(strMasterWorkbookFullPath, prisms, strCurrentDisplacementWorksheet, strHistoricDrWorksheet, strHistoricDtWorksheet, strHistoricDhWorksheet, strHistoricDsWorksheet, strComputedRdT, iFirstDataRow, iFirstOutputRow, strTimeBlockEndLocal);
 
                 // Get timestamp
@@ -471,37 +471,66 @@ namespace DisplacementReport
                 int iTargetCol = gnaSpreadsheetAPI.findFirstEmptyColumn(strMasterWorkbookFullPath, strHistoricDsWorksheet, "5", "2");
 
                 // Copy values to historic worksheets
-                Console.WriteLine(strTab1 + "Copy data to historic worksheets");
+                Console.WriteLine(strTab1 + "Copy current values to historic worksheets");
+                int iTriggerCol = 4; // Column D
+                int iTriggerRow = 2; // Row 1
                 int iEndRow = iFirstOutputRow + iNoOfPrisms - 1;
                 iStartRow = iFirstOutputRow;
+
                 Console.WriteLine(strTab2 + strHistoricDsWorksheet);
                 gnaSpreadsheetAPI.copyColumnRange(strMasterWorkbookFullPath, strCurrentDisplacementWorksheet, 4, strHistoricDsWorksheet, iTargetCol, iStartRow, iEndRow, strTimeStamp);
+
+                if(strdiscreteTriggerColors == "No")
+                {
+                    Console.WriteLine(strTab3 + "Apply graded background");
+                    var (OK, Warning, Alarm) = gnaSpreadsheetAPI.getTriggerValues(strMasterWorkbookFullPath, strHistoricDsWorksheet, iTriggerCol, iTriggerRow);
+                    gnaSpreadsheetAPI.gradedColorBackground(strMasterWorkbookFullPath, strHistoricDsWorksheet, iTargetCol, iTargetCol, iStartRow, iEndRow, OK, Warning, Alarm);
+                }
+
                 Console.WriteLine(strTab2 + strHistoricDhWorksheet);
                 gnaSpreadsheetAPI.copyColumnRange(strMasterWorkbookFullPath, strCurrentDisplacementWorksheet, 7, strHistoricDhWorksheet, iTargetCol, iStartRow, iEndRow, strTimeStamp);
+
+                if (strdiscreteTriggerColors == "No")
+                {
+                    Console.WriteLine(strTab3 + "Apply graded background");
+                    var (OK, Warning, Alarm) = gnaSpreadsheetAPI.getTriggerValues(strMasterWorkbookFullPath, strHistoricDhWorksheet, iTriggerCol, iTriggerRow);
+                    gnaSpreadsheetAPI.gradedColorBackground(strMasterWorkbookFullPath, strHistoricDhWorksheet, iTargetCol, iTargetCol, iStartRow, iEndRow, OK, Warning, Alarm);
+                }
 
                 if (strComputedRdT == "Yes")
                 {
                     Console.WriteLine(strTab2 + strHistoricDrWorksheet);
                     gnaSpreadsheetAPI.copyColumnRange(strMasterWorkbookFullPath, strCurrentDisplacementWorksheet, 5, strHistoricDrWorksheet, iTargetCol, iStartRow, iEndRow, strTimeStamp);
+
+                    if (strdiscreteTriggerColors == "No")
+                    {
+                        Console.WriteLine(strTab3 + "Apply graded background");
+                        var (OK, Warning, Alarm) = gnaSpreadsheetAPI.getTriggerValues(strMasterWorkbookFullPath, strHistoricDrWorksheet, iTriggerCol, iTriggerRow);
+                        gnaSpreadsheetAPI.gradedColorBackground(strMasterWorkbookFullPath, strHistoricDrWorksheet, iTargetCol, iTargetCol, iStartRow, iEndRow, OK, Warning, Alarm);
+                    }
+
                     Console.WriteLine(strTab2 + strHistoricDtWorksheet);
                     gnaSpreadsheetAPI.copyColumnRange(strMasterWorkbookFullPath, strCurrentDisplacementWorksheet, 6, strHistoricDtWorksheet, iTargetCol, iStartRow, iEndRow, strTimeStamp);
+
+                    if (strdiscreteTriggerColors == "No")
+                    {
+                        Console.WriteLine(strTab3 + "Apply graded background");
+                        var (OK, Warning, Alarm) = gnaSpreadsheetAPI.getTriggerValues(strMasterWorkbookFullPath, strHistoricDtWorksheet, iTriggerCol, iTriggerRow);
+                        gnaSpreadsheetAPI.gradedColorBackground(strMasterWorkbookFullPath, strHistoricDtWorksheet, iTargetCol, iTargetCol, iStartRow, iEndRow, OK, Warning, Alarm);
+                    }
                 }
 
             }
 
-            //Console.WriteLine("6. Compute displacement factor");
-            //Console.WriteLine(strTab1 + "No");
-            //gnaSpreadsheetAPI.computePositiveDisplacementFactor(strMasterWorkbookFullPath, strReferenceWorksheet, strPositiveDisplacementBearing, strFirstDataRow);
-
-            //Console.WriteLine("7. Copy workbook");
+            Console.WriteLine("6. Copy workbook");
             gnaSpreadsheetAPI.copyWorkbook(strMasterWorkbookFullPath, strExportFile);
 
-            //Console.WriteLine("8. Reset the master workbook");
+            Console.WriteLine("7. Reset the master workbook");
             iFirstOutputRow = Convert.ToInt16(strFirstOutputRow);
             int iLastOutputRow = iFirstOutputRow + iNoOfPrisms - 1;
             gnaSpreadsheetAPI.resetMasterWorkbook(strMasterWorkbookFullPath, strCurrentDisplacementWorksheet, iFirstOutputRow, 4, iLastOutputRow, 7);
 
-            Console.WriteLine("9. Draw charts");
+            Console.WriteLine("8. Draw charts");
             strDateTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
 
             if (strDrawCharts == "Yes")
@@ -550,7 +579,7 @@ namespace DisplacementReport
                 Console.WriteLine(strTab1 + "No charts");
             }
 
-            Console.WriteLine("10. Email the workbook");
+            Console.WriteLine("9. Email the workbook");
             if (shouldSend)
             {
                 Console.WriteLine(strTab1 + "Today is a valid day to send emails.");
