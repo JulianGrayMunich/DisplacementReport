@@ -59,6 +59,7 @@ namespace DisplacementReport
             string strComputedRdT = config["computedRdT"];
             string strSendEmails = config["SendEmails"];
             string strdiscreteTriggerColors = config["discreteTriggerColors"];
+            string strManualSurvey = config["ManualSurvey"];
 
             #endregion
 
@@ -88,8 +89,9 @@ namespace DisplacementReport
             string strChartsWorksheet_dR = config["ChartsWorksheet_dR"];
             string strChartsWorksheet_dT = config["ChartsWorksheet_dT"];
             string strChartsWorksheet_dH = config["ChartsWorksheet_dH"];
+            string strEmbankmentResultsWorksheet = config["EmbankmentResultsWorksheet"];
+            string strClient = config["Client"]; // JWG : Jake Gaskill
 
-            
 
 
             string strFirstDataRow = config["FirstDataRow"];
@@ -107,8 +109,6 @@ namespace DisplacementReport
             string strManualBlockEnd = config["manualBlockEnd"];
             string strTimeOffsetHrs = config["TimeOffsetHrs"];
             string strBlockSizeHrs = config["BlockSizeHrs"];
-
-
             string strNoOfTimeBlocksPerReport = config["NoOfTimeBlocksPerReport"];
             string strNoOfEpochsHistoricData = config["NoOfEpochsHistoricData"];
 
@@ -144,12 +144,12 @@ namespace DisplacementReport
             string strSMStitle = config["SMSTitle"];
             string strMessage = "";
 
-            
+
             string strEmailLogin = config["EmailLogin"];
             string strEmailPassword = config["EmailPassword"];
             string strEmailFrom = config["EmailFrom"];
             string strEmailRecipients = config["EmailRecipients"];
-
+            string strEmailMessage = config["EmailMessage"];
 
             var emailTransmissionDays = config["emailTransmission"];
             var validDays = gnaT.ParseEmailTransmissionDays(emailTransmissionDays);
@@ -206,7 +206,7 @@ namespace DisplacementReport
 
 
             // Welcome message
-            gnaT.WelcomeMessage("DisplacementReport 20250714");
+            gnaT.WelcomeMessage("DisplacementReport 20250903");
 
             //====  Environment check
 
@@ -257,74 +257,88 @@ namespace DisplacementReport
 
 
             //==== Prepare the time block
-            //gnaT.checkReportingSchedule(strTimeBlockType, strProjectTitle + " DisplacementReport");
 
-            //List<Tuple<string, string>> subBlocks = new List<Tuple<string, string>>();
-            var subBlocks = new List<Tuple<string, string>>();
+            //var subBlocks = new List<Tuple<string, string>>();
+
+
+            List<Tuple<string, string>> subBlocks = new List<Tuple<string, string>>();
 
             switch (strTimeBlockType)
             {
                 case "Historic":
-                    strManualBlockStart = strManualBlockStart.Replace("'", "") + ":00";
-                    strManualBlockEnd = strManualBlockEnd.Replace("'", "") + ":00";
-                    strTimeBlockStartUTC = gnaT.convertLocalToUTC(strManualBlockStart).Trim();
-                    strTimeBlockEndUTC = gnaT.convertLocalToUTC(strManualBlockEnd).Trim();
-                    double dblBlockSizeHrs = Convert.ToDouble(strBlockSizeHrs);
-                    subBlocks = gnaT.GenerateTimeBlocks(strTimeBlockStartUTC, strTimeBlockEndUTC, dblBlockSizeHrs);
+                    subBlocks = gnaT.prepareTimeBlocks(
+                        "Historic",
+                        strBlockSizeHrs,
+                        strManualBlockStart,
+                        strManualBlockEnd);
                     break;
+
                 case "Manual":
-                    strManualBlockStart = strManualBlockStart.Replace("'", "") + ":00";
-                    strManualBlockEnd = strManualBlockEnd.Replace("'", "") + ":00";
-                    strTimeBlockStartUTC = gnaT.convertLocalToUTC(strManualBlockStart);
-                    strTimeBlockEndUTC = gnaT.convertLocalToUTC(strManualBlockEnd);
-                    subBlocks.Add(Tuple.Create(strTimeBlockStartUTC, strTimeBlockEndUTC));
+                    subBlocks = gnaT.prepareTimeBlocks(
+                        "Manual",
+                        strManualBlockStart,
+                        strManualBlockEnd);
                     break;
+
                 case "Schedule":
-                    dblStartTimeOffset = -1.0 * Convert.ToDouble(strTimeOffsetHrs);
-                    dblEndTimeOffset = dblStartTimeOffset - Convert.ToDouble(strBlockSizeHrs);
-                    strTimeBlockStartLocal = " '" + DateTime.Now.AddHours(dblEndTimeOffset).ToString("yyyy-MM-dd HH:mm:ss") + "' ";
-                    strTimeBlockEndLocal = " '" + DateTime.Now.AddHours(dblStartTimeOffset).ToString("yyyy-MM-dd HH:mm:ss") + "' ";
-                    string strLocalStartTime = DateTime.Now.AddHours(dblEndTimeOffset).ToString("yyyy-MM-dd HH:mm") + ":00";
-                    string strLocalEndTime = DateTime.Now.AddHours(dblStartTimeOffset).ToString("yyyy-MM-dd HH:mm") + ":00";
-                    strTimeBlockStartUTC = gnaT.convertLocalToUTC(strLocalStartTime);
-                    strTimeBlockEndUTC = gnaT.convertLocalToUTC(strLocalEndTime);
-                    subBlocks.Add(Tuple.Create(strTimeBlockStartUTC, strTimeBlockEndUTC));
+                    subBlocks = gnaT.prepareTimeBlocks(
+                        "Schedule",
+                        strBlockSizeHrs);
                     break;
+
                 default:
                     Console.WriteLine("\nError in Timeblock Type");
-                    Console.WriteLine(strTab1 + "Time block type: " + strTimeBlockType);
-                    Console.WriteLine(strTab1 + "Must be Manual, Schedule or Historic");
-                    Console.WriteLine("\nPress key to exit..."); Console.ReadKey();
-                    goto ThatsAllFolks;
+                    Console.WriteLine("Time block type: " + strTimeBlockType);
+                    Console.WriteLine("Must be Manual, Schedule or Historic");
+                    Console.WriteLine("\nPress key to exit...");
+                    Console.ReadKey();
+                    Environment.Exit(1);
                     break;
             }
 
+
+
+
+
             //==== Process data ===================================================================================
-            Console.WriteLine("2. Extract point names");
-            string[] strPointNames = gnaSpreadsheetAPI.readPointNames(strMasterWorkbookFullPath, strSurveyWorksheet, strFirstDataRow);
 
-            Console.WriteLine("3. Extract SensorID");
-            strSensorID = gnaDBAPI.getSensorIDfromDB(strDBconnection, strPointNames, strProjectTitle);
-
-            if (strDebug == "Yes")
+            if (strManualSurvey == "Yes")
             {
-                int Counter = 0;
-                Console.WriteLine($"strProjectTitle: {strProjectTitle}");
-                while (Counter < strSensorID.GetLength(0))
+                Console.WriteLine($"2. Manual Survey:\n{strTab1}Jump steps 2,3,4  ({strClient})");
+                goto entryPoint_1;
+            }
+            else
+            {
+                Console.WriteLine("2. Extract point names");
+                string[] strPointNames = gnaSpreadsheetAPI.readPointNames(strMasterWorkbookFullPath, strSurveyWorksheet, strFirstDataRow);
+
+                Console.WriteLine("3. Extract SensorID");
+                strSensorID = gnaDBAPI.getSensorIDfromDB(strDBconnection, strPointNames, strProjectTitle);
+
+                if (strDebug == "Yes")
                 {
-                    string name = strSensorID[Counter, 0].Trim();
-                    if (name == "NoMore") break;
-                    string id = strSensorID[Counter, 1].Trim();
-                    Console.WriteLine($"{Counter}  {name}  {id}");
-                    Counter++;
+                    int Counter = 0;
+                    Console.WriteLine($"strProjectTitle: {strProjectTitle}");
+                    while (Counter < strSensorID.GetLength(0))
+                    {
+                        string name = strSensorID[Counter, 0].Trim();
+                        if (name == "NoMore") break;
+                        string id = strSensorID[Counter, 1].Trim();
+                        Console.WriteLine($"{Counter}  {name}  {id}");
+                        Counter++;
+                    }
+
+                    Console.WriteLine("press key to continue...");
+                    Console.ReadKey();
                 }
 
-                Console.WriteLine("press key to continue...");
-                Console.ReadKey();
+                Console.WriteLine("4. Write SensorID to workbook");
+                gnaSpreadsheetAPI.writeSensorID(strMasterWorkbookFullPath, strSurveyWorksheet, strSensorID, strFirstDataRow);
+
             }
 
-            Console.WriteLine("4. Write SensorID to workbook");
-            gnaSpreadsheetAPI.writeSensorID(strMasterWorkbookFullPath, strSurveyWorksheet, strSensorID, strFirstDataRow);
+entryPoint_1:
+
 
             string strDateTime = DateTime.Now.ToString("yyyyMMdd_HHmm");
             string strDateTimeUTC = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");   //2022-07-26 13:45:15
@@ -337,6 +351,7 @@ namespace DisplacementReport
 
             foreach (var block in subBlocks)
             {
+
                 strTimeBlockStartUTC = block.Item1;
                 strTimeBlockEndUTC = block.Item2;
                 strTimeBlockStartLocal = gnaT.convertUTCToLocal(strTimeBlockStartUTC).Replace("'", "").Trim();
@@ -346,12 +361,32 @@ namespace DisplacementReport
                 strReportTime = strReportTime.Replace("-", "");
                 strReportTime = strReportTime.Replace(" ", "_");
                 strReportTime = strReportTime.Replace(":", "");
-                strExportFile = strExcelPath + strContractTitle + "_" + strReportType + "_" + strReportTime + ".xlsx";
+
+                if ((strTimeBlockType == "Manual") || (strTimeBlockType == "Historic"))
+                {
+                    strExportFile = strExcelPath + strContractTitle + "_" + strReportType + "_" + strReportTime + "m.xlsx";
+                }
+                else
+                {
+                    strExportFile = strExcelPath + strContractTitle + "_" + strReportType + "_" + strReportTime + ".xlsx";
+                }
+
+
 
                 strTimeStamp = strTimeBlockEndLocal + "\n(local)";
-                Console.WriteLine("\n"+strTab2 + strTimeBlockStartLocal + " (local)");
-                Console.WriteLine(strTab2 + strTimeBlockEndLocal + " (local)\n");
 
+                if (strManualSurvey == "Yes")
+                {
+                    Console.WriteLine(strTab1 + "Manual survey - no database extraction");
+                    strTimeStamp = strTimeBlockEndLocal + "\nManual Survey";
+                    goto entryPoint_2;
+                }
+                else
+                {
+                    Console.WriteLine(strTab1 + "Automatic survey - extract data from database");
+                    Console.WriteLine(strTab2 + strTimeBlockStartLocal + " (local)");
+                    Console.WriteLine(strTab2 + strTimeBlockEndLocal + " (local)\n");
+                }
 
                 Console.WriteLine(strTab1 + "Extract mean deltas for time block");
                 strPointDeltas = gnaDBAPI.getMeanDeltasFromDB(strDBconnection, strProjectTitle, strTimeBlockStartUTC, strTimeBlockEndUTC, strSensorID);
@@ -415,18 +450,22 @@ namespace DisplacementReport
                     Console.WriteLine(strTab1 + "No outlier checking");
                 }
 
-                //Console.WriteLine(strTab1 + "Calibration data");
-                //{
-                //    string strDistanceColumn = "3";
-                //    strTimeBlockStartUTC = strTimeBlockStartUTC.Replace("'", "").Trim();
-                //    strTimeBlockEndUTC = strTimeBlockEndUTC.Replace("'", "").Trim();
-                //    gnaSpreadsheetAPI.populateCalibrationWorksheet(
-                //        strDBconnection, strTimeBlockStartUTC, strTimeBlockEndUTC, strMasterWorkbookFullPath,
-                //        strCalibrationWorksheet, strFirstOutputRow, strDistanceColumn, strProjectTitle
-                //    );
-                //}
+//Console.WriteLine(strTab1 + "Calibration data");
+//{
+//    string strDistanceColumn = "3";
+//    strTimeBlockStartUTC = strTimeBlockStartUTC.Replace("'", "").Trim();
+//    strTimeBlockEndUTC = strTimeBlockEndUTC.Replace("'", "").Trim();
+//    gnaSpreadsheetAPI.populateCalibrationWorksheet(
+//        strDBconnection, strTimeBlockStartUTC, strTimeBlockEndUTC, strMasterWorkbookFullPath,
+//        strCalibrationWorksheet, strFirstOutputRow, strDistanceColumn, strProjectTitle
+//    );
+//}
 
-                // Here the prism data is obtained from the reference worksheet. The only time the reference worksheet is touched.
+// Here the prism data is obtained from the reference worksheet. The only time the reference worksheet is touched.
+
+
+entryPoint_2:
+
                 Console.WriteLine(strTab1 + "Compute dS, dR & dT");
                 List<Prism> prisms = gnaSpreadsheetAPI.computedSdRdT(strMasterWorkbookFullPath, strReferenceWorksheet, strFirstDataRow, strReferenceLineTerminalsEaNaEbNb, strComputedRdT);
 
@@ -480,7 +519,7 @@ namespace DisplacementReport
                 Console.WriteLine(strTab2 + strHistoricDsWorksheet);
                 gnaSpreadsheetAPI.copyColumnRange(strMasterWorkbookFullPath, strCurrentDisplacementWorksheet, 4, strHistoricDsWorksheet, iTargetCol, iStartRow, iEndRow, strTimeStamp);
 
-                if(strdiscreteTriggerColors == "No")
+                if (strdiscreteTriggerColors == "No")
                 {
                     Console.WriteLine(strTab3 + "Apply graded background");
                     var (OK, Warning, Alarm) = gnaSpreadsheetAPI.getTriggerValues(strMasterWorkbookFullPath, strHistoricDsWorksheet, iTriggerCol, iTriggerRow);
@@ -520,124 +559,162 @@ namespace DisplacementReport
                     }
                 }
 
-            }
-
-            Console.WriteLine("6. Copy workbook");
-            gnaSpreadsheetAPI.copyWorkbook(strMasterWorkbookFullPath, strExportFile);
-
-            Console.WriteLine("7. Reset the master workbook");
-            iFirstOutputRow = Convert.ToInt16(strFirstOutputRow);
-            int iLastOutputRow = iFirstOutputRow + iNoOfPrisms - 1;
-            gnaSpreadsheetAPI.resetMasterWorkbook(strMasterWorkbookFullPath, strCurrentDisplacementWorksheet, iFirstOutputRow, 4, iLastOutputRow, 7);
-
-            Console.WriteLine("8. Draw charts");
-            strDateTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
-
-            if (strDrawCharts == "Yes")
-            {
-
-                var chart = new ChartSettings();
-
-                chart.chartWorksheet = "Charts";
-                chart.YseriesRow = 7;   // vertical
-                chart.XseriesRow = 6;   // horizontal
-                chart.XAxisTitle = "Date";
-                chart.YAxisTitle = "Displacement (m)";
-                chart.firstDataCol = 3;
-                chart.lastDataCol = 16;
-                chart.firstDataRow = 7;
-                chart.lastDataRow = 17;
-                chart.legendCol = "A";
 
 
-                Console.WriteLine(strTab1 + "Historic displacement");
-                chart.chartX = 250;
-                chart.chartY = 300;
-                chart.dataWorksheet = "Historic Displacement";
-                chart.chartName = "Displacement";
-                chart.chartTitle = "Horizontal Displacement \nPast 14 days";
-                chart.YAxisTitle = "Displacement (m)";
-                chart.XAxisTitle = "Days";
-                chart.YAxisMaxValue = .01;
-                chart.YAxisMinValue = -0.01;
-                chartingAPI.drawMultiSeriesChart(strExportFile, chart);
+                Console.WriteLine("6. Copy workbook");
+                gnaSpreadsheetAPI.copyWorkbook(strMasterWorkbookFullPath, strExportFile);
 
+                int iReadingCountCol = 11;
+                int iReadingCountRow = 9;
 
-                Console.WriteLine(strTab1 + "Horizontal settlement");
-                chart.chartX = 1100;
-                chart.chartY = 300;
-                chart.dataWorksheet = "Historic Settlement";
-                chart.chartName = "Settlement";
-                chart.chartTitle = "Vertical Settlement \nPast 14 days";
-                chart.YAxisMaxValue = .01;
-                chart.YAxisMinValue = -0.01;
-                chartingAPI.drawMultiSeriesChart(strExportFile, chart);
-
-            }
-            else
-            {
-                Console.WriteLine(strTab1 + "No charts");
-            }
-
-            Console.WriteLine("9. Email the workbook");
-            if (shouldSend)
-            {
-                Console.WriteLine(strTab1 + "Today is a valid day to send emails.");
-
-                if (strSendEmails == "Yes")
+                if (strClient == "JWG")
                 {
-                    try
+                    Console.WriteLine(strTab1 + "Format " + strEmbankmentResultsWorksheet);
+                    gnaSpreadsheetAPI.JWGformatMonitoringResults(
+                    strMasterWorkbookFullPath,
+                    strEmbankmentResultsWorksheet,
+                    iReadingCountCol,
+                    iReadingCountRow
+                    );
+                }
+
+
+                Console.WriteLine("7. Reset the master workbook");
+                iFirstOutputRow = Convert.ToInt16(strFirstOutputRow);
+                int iLastOutputRow = iFirstOutputRow + iNoOfPrisms - 1;
+                gnaSpreadsheetAPI.resetMasterWorkbook(strMasterWorkbookFullPath, strCurrentDisplacementWorksheet, iFirstOutputRow, 4, iLastOutputRow, 7);
+
+                Console.WriteLine("8. Draw charts");
+                strDateTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+
+                if (strDrawCharts == "Yes")
+                {
+
+                    var chart = new ChartSettings();
+
+                    chart.chartWorksheet = "Charts";
+                    chart.YseriesRow = 7;   // vertical
+                    chart.XseriesRow = 6;   // horizontal
+                    chart.XAxisTitle = "Date";
+                    chart.YAxisTitle = "Displacement (m)";
+                    chart.firstDataCol = 3;
+                    chart.lastDataCol = 16;
+                    chart.firstDataRow = 7;
+                    chart.lastDataRow = 17;
+                    chart.legendCol = "A";
+
+
+                    Console.WriteLine(strTab1 + "Historic displacement");
+                    chart.chartX = 250;
+                    chart.chartY = 300;
+                    chart.dataWorksheet = "Historic Displacement";
+                    chart.chartName = "Displacement";
+                    chart.chartTitle = "Horizontal Displacement \nPast 14 days";
+                    chart.YAxisTitle = "Displacement (m)";
+                    chart.XAxisTitle = "Days";
+                    chart.YAxisMaxValue = .01;
+                    chart.YAxisMinValue = -0.01;
+                    chartingAPI.drawMultiSeriesChart(strExportFile, chart);
+
+
+                    Console.WriteLine(strTab1 + "Horizontal settlement");
+                    chart.chartX = 1100;
+                    chart.chartY = 300;
+                    chart.dataWorksheet = "Historic Settlement";
+                    chart.chartName = "Settlement";
+                    chart.chartTitle = "Vertical Settlement \nPast 14 days";
+                    chart.YAxisMaxValue = .01;
+                    chart.YAxisMinValue = -0.01;
+                    chartingAPI.drawMultiSeriesChart(strExportFile, chart);
+
+                }
+                else
+                {
+                    Console.WriteLine(strTab1 + "No charts");
+                }
+
+                Console.WriteLine("9. Email the workbook");
+                if (shouldSend)
+                {
+                    Console.WriteLine(strTab1 + "Today is a valid day to send emails.");
+
+                    if (strSendEmails == "Yes")
                     {
-                        strMessage = "This is an automated displacement report issued by the monitoring system. Please review and forward to the client. Please do not reply to this email.";
-                        strMessage = gnaT.addCopyright("DsplRpt", strMessage);
-                        string license = gnaT.commercialSoftwareLicense("email");
-
-                        SmtpMail oMail = new(license)
+                        try
                         {
-                            From = strEmailFrom,
-                            To = new AddressCollection(strEmailRecipients),
-                            Subject = "Displacement report: " + strProjectTitle + " (" + strDateTime + ")",
-                            TextBody = strMessage
-                        };
+                            strMessage = strEmailMessage;
+                            strMessage = gnaT.addCopyright("DsplRpt", strMessage);
+                            string license = gnaT.commercialSoftwareLicense("email");
+                            string strSubjectLine = "";
 
-                        // SMTP server address
-                        SmtpServer oServer = new("smtp.gmail.com")
+                            if (strClient == "JWG")
+                            {
+                                strSubjectLine = "Embankment report: " + strProjectTitle + " (" + strReportTime + ")";
+                            }
+                            else
+                            {
+                                strSubjectLine = "Displacement report: " + strProjectTitle + " (" + strReportTime + ")";
+
+                            }
+
+
+                            SmtpMail oMail = new(license)
+                            {
+                                From = strEmailFrom,
+                                To = new AddressCollection(strEmailRecipients),
+                                Subject = strSubjectLine,
+                                TextBody = strMessage
+                            };
+
+                            // SMTP server address
+                            SmtpServer oServer = new("smtp.gmail.com")
+                            {
+                                User = strEmailLogin,
+                                Password = strEmailPassword,
+                                ConnectType = SmtpConnectType.ConnectTryTLS,
+                                Port = 587
+                            };
+
+
+                            oMail.AddAttachment(strExportFile);
+                            SmtpClient oSmtp = new();
+                            oSmtp.SendMail(oServer, oMail);
+
+                            strMessage = "Displacement report: " + strProjectTitle + " (emailed)";
+
+                            gnaT.updateSystemLogFile(strRootFolder, strMessage);
+                            gnaT.updateReportTime("DSPRPT");
+                            Console.WriteLine(strTab1 + "email sent & logs updated");
+                        }
+                        catch (Exception ep)
                         {
-                            User = strEmailLogin,
-                            Password = strEmailPassword,
-                            ConnectType = SmtpConnectType.ConnectTryTLS,
-                            Port = 587
-                        };
-
-
-                        oMail.AddAttachment(strExportFile);
-                        SmtpClient oSmtp = new();
-                        oSmtp.SendMail(oServer, oMail);
-
-                        strMessage = "Displacement report: " + strProjectTitle + " (emailed)";
-
-                        gnaT.updateSystemLogFile(strRootFolder, strMessage);
-                        gnaT.updateReportTime("DSPRPT");
-                        Console.WriteLine(strTab1 + "email sent & logs updated");
+                            Console.WriteLine(strTab1 + "\nFailed to send email with the following error:");
+                            Console.WriteLine(strEmailLogin);
+                            Console.WriteLine(strEmailPassword);
+                            Console.WriteLine(ep.Message);
+                            //Console.ReadKey();
+                        }
                     }
-                    catch (Exception ep)
+                    else
                     {
-                        Console.WriteLine(strTab1 + "\nFailed to send email with the following error:");
-                        Console.WriteLine(strEmailLogin);
-                        Console.WriteLine(strEmailPassword);
-                        Console.WriteLine(ep.Message);
-                        //Console.ReadKey();
+                        Console.WriteLine(strTab1 + "No email sent");
                     }
                 }
                 else
                 {
-                    Console.WriteLine(strTab1 + "No email sent");
+                    Console.WriteLine(strTab1 + "No email should be sent today.");
                 }
+
+
+                if (strManualSurvey == "Yes")
+                {
+                    goto ThatsAllFolks;
+                }
+
+
             }
-            else
-            {
-                Console.WriteLine(strTab1 + "No email should be sent today.");
-            }
+
+
 
 ThatsAllFolks:
             gnaT.freezeScreen(strFreezeScreen);
