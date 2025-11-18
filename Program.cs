@@ -185,7 +185,7 @@ namespace DisplacementReport
                 string strTimeBlockEndLocal = "";
                 string strTimeBlockStartUTC = "";
                 string strTimeBlockEndUTC = "";
-
+                string logFileMessage = "";
 
 
                 int iRow = Convert.ToInt32(strFirstDataRow);
@@ -457,7 +457,8 @@ entryPoint_1:
                         {
                             strMessage = "Displacement Report: outliers - SMS message failed";
                         }
-                        gnaT.updateSystemLogFile(strRootFolder, strMessage);
+                        logFileMessage = strMessage + "(" + smsMobile + ")";
+                        gnaT.updateSystemLogFile(strRootFolder, logFileMessage);
                     }
                     else if ((strMessage == "OK") && (strCheckForOutliers == "Yes"))
                     {
@@ -706,7 +707,9 @@ entryPoint_2:
 
                                 strMessage = "Displacement report: " + strProjectTitle + " (emailed)";
 
-                                gnaT.updateSystemLogFile(strRootFolder, strMessage);
+                                logFileMessage = strMessage+ "("+strEmailRecipients+")";
+                                gnaT.updateSystemLogFile(strRootFolder, logFileMessage);
+
                                 gnaT.updateReportTime("DSPRPT");
                                 Console.WriteLine(strTab1 + "email sent & logs updated");
                             }
